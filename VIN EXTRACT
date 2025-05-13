@@ -1,0 +1,110 @@
+import os
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from pdf2image import convert_from_path
+from pytesseract import image_to_string
+from PIL import Image, ImageEnhance
+import re
+import pandas as pd
+import tempfile
+from tkinter import simpledialog
+import sys
+import pytesseract
+
+# Get the folder path where the EXE will be run
+base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+
+# Path to bundled Tesseract
+pytesseract.pytesseract.tesseract_cmd = os.path.join(base_dir, 'tesseract', 'tesseract.exe')
+
+# Path to bundled Poppler
+poppler_path = os.path.join(base_dir, 'poppler', 'bin')
+
+
+# Path to local Tesseract.exe (will be included with exe)
+pytesseract.pytesseract.tesseract_cmd = os.path.join(os.path.dirname(__file__), 'tesseract', 'tesseract.exe')
+
+
+# Path to Poppler (no admin needed)
+poppler_path = r"C:\Users\e98dhf\Downloads\Release-24.08.0-0\poppler-24.08.0\Library\bin"
+poppler_path = os.path.join(os.path.dirname(__file__), 'poppler')
+
+
+def extract_vin_and_date(text):
+    cleaned_text = text.replace("O", "0").upper()
+
+    date_match = re.search(r'\b\d{2}/\d{2}/\d{4}\b', cleaned_text)
+    vin_match = re.search(r'[A-Z0-9]{17}', cleaned_text)
+
+    if vin_match:
+        vin = vin_match.group(0)
+        if vin.startswith("S"):
+            vin = "5" + vin[1:]
+        elif vin.startswith("Z"):
+            vin = "2" + vin[1:]
+    else:
+        vin = None
+
+    return vin, date_match.group(0) if date_match else None
+
+# GUI to pick PDF
+root = tk.Tk()
+root.withdraw()
+pdf_path = filedialog.askopenfilename(title="Select PDF of Honda Invoices", filetypes=[("PDF files", "*.pdf")])
+if not pdf_path:
+    raise Exception("No PDF file selected.")
+
+# Convert PDF to images using Poppler path
+with tempfile.TemporaryDirectory() as path:
+    images = convert_from_path(pdf_path, dpi=300, output_folder=path, poppler_path=poppler_path)
+
+    results = []
+    for img in images:
+        gray = img.convert('L')  # grayscale
+        enhanced = ImageEnhance.Contrast(gray).enhance(2.0)
+        text = image_to_string(enhanced)
+
+#change made here for user pop up
+        valid_prefixes = ["2HG", "2HK", "5FN"]
+
+        vin, date = extract_vin_and_date(text)
+
+        # Manual review trigger
+        needs_manual = False
+
+        # If no VIN found
+        if not vin:
+            needs_manual = True
+        # If VIN found but starts with a weird prefix
+        elif not any(vin.startswith(prefix) for prefix in valid_prefixes):
+            needs_manual = True
+
+        if needs_manual:
+            img.show()
+            root = tk.Tk()
+            root.withdraw()
+            vin = simpledialog.askstring("VIN Check", "Please confirm or correct the VIN below:",
+                                         initialvalue=vin or "")
+
+            root.destroy()
+
+        results.append({
+            "VIN": vin or "NOT FOUND",
+            "Date": date or "NOT FOUND"
+        })
+
+# GUI to save Excel file
+excel_path = filedialog.asksaveasfilename(
+    defaultextension=".xlsx",
+    filetypes=[("Excel files", "*.xlsx")],
+    title="Save Extracted Data As"
+)
+if not excel_path:
+    raise Exception("No Excel save path selected.")
+
+# Write to Excel
+df = pd.DataFrame(results)
+df.to_excel(excel_path, index=False)
+
+messagebox.showinfo("Success", f"Data saved to:\n{excel_path}")
+os.startfile(excel_path)
