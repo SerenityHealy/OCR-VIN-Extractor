@@ -11,16 +11,6 @@ from tkinter import simpledialog
 import sys
 import pytesseract
 
-# Get the folder path where the EXE will be run
-base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-
-# Path to bundled Tesseract
-pytesseract.pytesseract.tesseract_cmd = os.path.join(base_dir, 'tesseract', 'tesseract.exe')
-
-# Path to bundled Poppler
-poppler_path = os.path.join(base_dir, 'poppler', 'bin')
-
-
 # Path to local Tesseract.exe (will be included with exe)
 pytesseract.pytesseract.tesseract_cmd = os.path.join(os.path.dirname(__file__), 'tesseract', 'tesseract.exe')
 
